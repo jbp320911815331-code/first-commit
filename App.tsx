@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Globe from './components/Globe';
 import StationList from './components/StationList';
 import StationPlayer from './components/StationPlayer';
-import { getTopStations, getStationsByLocation, searchStations } from './services/radioService';
+import { getTopStations, searchStations, getStationsByCountryCode } from './services/radioService';
 import { RadioStation, GeoLocation } from './types';
-import { Menu, X, Globe2 } from 'lucide-react';
+import { Menu, X, Radio, Play, Globe2 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [stations, setStations] = useState<RadioStation[]>([]);
@@ -12,42 +12,51 @@ const App: React.FC = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [hasStarted, setHasStarted] = useState(false);
 
-  // Initial load: Top stations worldwide to populate the map
+  // Initial load: Top stations worldwide + Specific China/Major countries for better coverage
   useEffect(() => {
     const init = async () => {
       setLoading(true);
-      const topStations = await getTopStations(300);
-      setStations(topStations);
-      setLoading(false);
-      
-      // Auto-select sidebar state based on screen size
-      if (window.innerWidth < 768) setIsSidebarOpen(false);
+      try {
+        // Fetch Top Global, China (CN), and USA (US) in parallel to ensure map is populated
+        const [globalTop, chinaTop, usaTop] = await Promise.all([
+          getTopStations(150),
+          getStationsByCountryCode('CN', 100), // Ensure China is well represented
+          getStationsByCountryCode('US', 50)   // Add some US density
+        ]);
+
+        // Deduplicate based on UUID
+        const combined = [...globalTop, ...chinaTop, ...usaTop];
+        const seen = new Set<string>();
+        const uniqueStations: RadioStation[] = [];
+        
+        for (const s of combined) {
+          if (!seen.has(s.stationuuid)) {
+            seen.add(s.stationuuid);
+            uniqueStations.push(s);
+          }
+        }
+
+        setStations(uniqueStations);
+      } catch (e) {
+        console.error("Init failed", e);
+      } finally {
+        setLoading(false);
+        if (window.innerWidth < 768) setIsSidebarOpen(false);
+      }
     };
     init();
   }, []);
 
-  // Handle when globe rotation stops
-  const handleLocationChange = useCallback(async (loc: GeoLocation) => {
-    // We intentionally don't auto-fetch aggressively to preserve the user's "search context"
-    // if they just searched for something specific. 
-    // However, for a Radio Garden feel, we could enable this if we had a toggle.
-    // For now, we leave the globe purely for exploration of the *current* dataset 
-    // or manual clicks, unless the dataset is empty.
+  const handleLocationChange = useCallback((loc: GeoLocation) => {
+    // Optional: Fetch local stations when globe stops spinning
   }, []);
 
   const handleSearch = async (query: string) => {
     setLoading(true);
     const results = await searchStations(query);
     setStations(results);
-    
-    // If we have results, automatically select the first one to rotate the globe there
-    if (results.length > 0) {
-       // Don't auto-play, just rotate
-       // setActiveStation(results[0]); 
-       // Actually, picking the first one implies selection. 
-       // Let's just let the globe update its dots.
-    }
     setLoading(false);
     setIsSidebarOpen(true);
   };
@@ -55,44 +64,97 @@ const App: React.FC = () => {
   const handleStationSelect = (station: RadioStation) => {
     setActiveStation(station);
     setIsPlaying(true);
-    // On mobile, close sidebar on select to show the globe/player
     if (window.innerWidth < 768) {
         setIsSidebarOpen(false);
     }
   };
 
+  const handleStart = () => {
+    setHasStarted(true);
+  };
+
   return (
-    <div className="w-full h-screen bg-black flex flex-col relative overflow-hidden font-sans selection:bg-green-500 selection:text-black">
+    <div className="w-full h-screen bg-[#050505] flex flex-col relative overflow-hidden font-sans selection:bg-emerald-500 selection:text-black text-slate-100">
       
-      {/* Mobile Header/Toggle */}
-      <div className="absolute top-4 right-4 z-50 md:hidden">
+      {/* Start Screen Overlay */}
+      {!hasStarted && (
+        <div className="absolute inset-0 z-[100] bg-black flex flex-col items-center justify-center p-6 transition-opacity duration-700">
+           <div className="text-center space-y-8 max-w-2xl relative z-10">
+             <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-emerald-500/10 ring-1 ring-emerald-500/30 shadow-[0_0_40px_rgba(16,185,129,0.2)] mb-2 animate-pulse">
+                <Globe2 size={48} className="text-emerald-500" />
+             </div>
+             
+             <div className="space-y-2">
+               <h1 className="text-6xl md:text-8xl font-black text-white tracking-tighter">
+                  RADIO<span className="text-emerald-500">.GLB</span>
+               </h1>
+               <p className="text-slate-400 text-lg md:text-xl font-light tracking-wide">
+                 Connect to <span className="text-white font-medium">live frequencies</span> from every corner of the planet.
+               </p>
+             </div>
+             
+             <div className="pt-8">
+               <button 
+                 onClick={handleStart}
+                 className="group relative inline-flex items-center justify-center px-10 py-5 font-bold text-black transition-all duration-300 bg-emerald-500 rounded-full hover:bg-emerald-400 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-4 focus:ring-offset-black"
+               >
+                 <Play className="mr-3 fill-current" size={24} />
+                 <span className="tracking-widest text-sm">START LISTENING</span>
+                 <div className="absolute -inset-4 rounded-full bg-emerald-500/20 group-hover:bg-emerald-500/40 blur-xl transition-all duration-300 opacity-0 group-hover:opacity-100" />
+               </button>
+             </div>
+             
+             <p className="text-xs text-emerald-500/50 font-mono uppercase tracking-widest pt-12">
+               Featuring channels from China, USA, Europe & More
+             </p>
+           </div>
+           
+           {/* Background Ambient Effect */}
+           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-emerald-900/10 via-black to-black pointer-events-none" />
+        </div>
+      )}
+
+      {/* Mobile Toggle */}
+      <div className="absolute top-5 right-5 z-50 md:hidden">
          <button 
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="p-3 bg-slate-900/80 backdrop-blur border border-white/10 rounded-full text-green-400 shadow-lg hover:bg-slate-800 transition-colors"
+          className="p-3 bg-black/60 backdrop-blur-md border border-white/10 rounded-full text-emerald-400 shadow-xl"
         >
           {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
       </div>
 
-      <div className="absolute top-4 left-4 z-10 pointer-events-none mix-blend-difference">
-        <h1 className="text-3xl md:text-5xl font-black text-white tracking-tighter flex items-center gap-2">
-          RADIO<span className="text-green-500">.AI</span>
-        </h1>
-        <p className="text-[10px] md:text-xs text-green-400/80 font-mono mt-1 pl-1">
-            GLOBAL LIVE FREQUENCIES
-        </p>
+      {/* App Header (Desktop) - Redesigned to avoid overlap */}
+      <div className="absolute top-6 left-6 z-10 pointer-events-none select-none">
+         <div className="bg-black/20 backdrop-blur-xl border border-white/5 rounded-2xl p-4 pr-8 shadow-xl">
+            <div className="flex items-center gap-3">
+                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.8)]"></div>
+                <h1 className="text-2xl font-black text-white tracking-tighter">
+                RADIO<span className="text-emerald-500">.GLB</span>
+                </h1>
+            </div>
+            <div className="flex gap-3 mt-1 pl-5 text-[9px] font-mono text-emerald-500/60 uppercase tracking-widest">
+                <span className="flex items-center gap-1">LIVE FEED</span>
+                <span className="opacity-30">|</span>
+                <span>{stations.length} SIGNALS ONLINE</span>
+            </div>
+        </div>
       </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 relative">
-        <Globe 
-          onLocationChange={handleLocationChange} 
-          stations={stations}
-          activeStation={activeStation}
-        />
+      {/* Main Layout */}
+      <div className="flex-1 relative flex">
+        
+        {/* Globe Container */}
+        <div className="flex-1 relative z-0">
+             <Globe 
+                onLocationChange={handleLocationChange} 
+                stations={stations}
+                activeStation={activeStation}
+            />
+        </div>
 
-        {/* Sidebar Overlay/Slide-in */}
-        <div className={`absolute top-0 right-0 h-full transition-transform duration-500 ease-out z-40 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'} shadow-[-10px_0_30px_rgba(0,0,0,0.5)]`}>
+        {/* Sidebar */}
+        <div className={`absolute top-0 right-0 h-full md:relative md:w-96 md:h-full md:translate-x-0 transition-transform duration-500 ease-out z-20 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'} shadow-2xl`}>
            <StationList 
               stations={stations}
               activeStation={activeStation}
@@ -101,19 +163,9 @@ const App: React.FC = () => {
               loading={loading}
            />
         </div>
-        
-        {/* Toggle button for Desktop when closed */}
-        {!isSidebarOpen && (
-          <button 
-            onClick={() => setIsSidebarOpen(true)}
-            className="hidden md:flex absolute top-1/2 right-0 -translate-y-1/2 z-30 bg-slate-900/80 p-2 rounded-l-lg border-y border-l border-white/10 text-green-400 hover:pl-4 transition-all"
-          >
-            <Menu />
-          </button>
-        )}
       </div>
 
-      {/* Persistent Player */}
+      {/* Persistent Player Bar */}
       <StationPlayer 
         station={activeStation}
         isPlaying={isPlaying}

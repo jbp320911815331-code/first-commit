@@ -113,9 +113,6 @@ const Globe: React.FC<GlobeProps> = ({ onLocationChange, stations, activeStation
     // 4. Stations (Points)
     // Filter visible points (simple visibility check)
     // A point is visible if the distance from the center is less than 90 degrees.
-    // However, d3 geoPath handles clipping for Orthographic automatically usually,
-    // but explicit filtering helps performance and visual glitches.
-    
     svg.append('g')
       .selectAll('circle')
       .data(stations)
@@ -128,14 +125,12 @@ const Globe: React.FC<GlobeProps> = ({ onLocationChange, stations, activeStation
       .attr('stroke-width', 1)
       .style('display', d => {
           const coords = [d.geo_long, d.geo_lat];
-          // Simple visibility check based on clip angle (90 deg)
           const g = d3.geoCircle().center(coords as any).radius(0.1)();
           return path(g) ? 'block' : 'none';
       })
       .style('cursor', 'pointer')
       .on('click', (event, d) => {
-         // Although we click on the list usually, clicking a dot could select it
-         // Implementing this would require passing a setSelectedStation prop back up
+         // Interaction handled via list primarily, but this could be expanded
       });
 
 
@@ -166,11 +161,12 @@ const Globe: React.FC<GlobeProps> = ({ onLocationChange, stations, activeStation
 
   return (
     <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-black">
-      <div className="absolute top-4 left-4 z-10 pointer-events-none">
-        <h1 className="text-4xl font-bold text-white tracking-tighter">RADIO<span className="text-green-500">.AI</span></h1>
-        <p className="text-xs text-green-400 font-mono mt-1">
-            LAT: {(-rotation[1]).toFixed(2)} LON: {(-rotation[0]).toFixed(2)}
-        </p>
+      {/* Telemetry Data - Bottom Left */}
+      <div className="absolute bottom-6 left-6 z-10 pointer-events-none font-mono text-[10px] text-emerald-500/80 tracking-widest opacity-70">
+         <div className="flex flex-col gap-1">
+             <span className="border-l-2 border-emerald-500/50 pl-2">LAT: {(-rotation[1]).toFixed(4)}</span>
+             <span className="border-l-2 border-emerald-500/50 pl-2">LON: {(-rotation[0]).toFixed(4)}</span>
+         </div>
       </div>
       
       <svg ref={svgRef} className="w-full h-full cursor-move" />
