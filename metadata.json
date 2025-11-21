@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Radio AI Globe",
+  "description": "An interactive 3D globe to explore live radio stations worldwide, powered by the Radio Browser API and enhanced with cultural insights from Gemini AI.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
